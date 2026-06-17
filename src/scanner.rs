@@ -35,7 +35,16 @@ pub fn scan(start: &Path, config: &ScanConfig) -> Vec<DirResult> {
     let mut dir_map: std::collections::BTreeMap<PathBuf, Vec<FileEntry>> =
         std::collections::BTreeMap::new();
 
-    for entry in walker.into_iter().filter_map(|e| e.ok()) {
+    // Directories to always skip (build artifacts, version control internals)
+    let skip_dirs = ["target", ".git", "node_modules", ".next", "__pycache__"];
+
+    for entry in walker.into_iter().filter_entry(|e| {
+        if e.file_type().is_dir() {
+            let name = e.file_name().to_string_lossy();
+            return !skip_dirs.contains(&name.as_ref());
+        }
+        true
+    }).filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
             continue;
         }

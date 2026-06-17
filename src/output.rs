@@ -45,7 +45,11 @@ pub fn print_header(dir: &str, since: &str, type_spec: &str) {
 
 pub fn print_summary(results: &[DirResult], start_dir: &str) {
     let start = std::path::Path::new(start_dir);
-    for (i, result) in results.iter().enumerate() {
+
+    // Group by top-level project name, accumulating counts and tracking latest mtime
+    let mut groups: Vec<(String, usize, SystemTime)> = Vec::new();
+
+    for result in results {
         let project = result.dir
             .strip_prefix(start)
             .ok()
@@ -56,9 +60,20 @@ pub fn print_summary(results: &[DirResult], start_dir: &str) {
         let last_mtime = result.files.iter()
             .map(|f| f.mtime)
             .max()
-            .unwrap_or(SystemTime::now());
+            .unwrap_or(SystemTime::UNIX_EPOCH);
 
-        println!("{}", format_summary_line(i + 1, &project, result.files.len(), last_mtime));
+        if let Some(existing) = groups.iter_mut().find(|(name, _, _)| name == &project) {
+            existing.1 += result.files.len();
+            if last_mtime > existing.2 {
+                existing.2 = last_mtime;
+            }
+        } else {
+            groups.push((project, result.files.len(), last_mtime));
+        }
+    }
+
+    for (i, (project, count, last_mtime)) in groups.iter().enumerate() {
+        println!("{}", format_summary_line(i + 1, project, *count, *last_mtime));
     }
 }
 
