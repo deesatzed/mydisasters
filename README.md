@@ -1,49 +1,10 @@
 # dirtrack
 
-A fast Rust CLI that finds directories containing recently changed or added files across a project workspace.
-
-Built for messy multi-project setups where you need to answer "what changed recently and where?" without memorizing `find` flags.
-
-## Install
-
-```bash
-git clone https://github.com/deesatzed/mydisasters.git
-cd mydisasters/dirtrack
-cargo install --path .
-```
-
-Requires Rust 1.77+. Binary installs to `~/.cargo/bin/dirtrack`.
-
-## Usage
-
-### Interactive mode (no args)
-
-Run bare and arrow-key through prompts. The tool echoes the equivalent command so you learn flags naturally:
+> Find directories with recently changed files — across any workspace, instantly.
 
 ```
-$ dirtrack
+$ dirtrack /Volumes/WS4TB --since 7d --type secrets
 
-  Start dir:  [/Volumes/WS4TB]
-  Since when? > 2h  7d  30d  custom
-  File types? > all  secrets  configs  code  custom
-  Show file details? > summary only  verbose
-  Open result in Finder? > no  yes
-
-▶ Ran: dirtrack /Volumes/WS4TB --since 7d --type secrets
-```
-
-### Direct mode
-
-```bash
-dirtrack /Volumes/WS4TB --since 7d --type secrets
-dirtrack . --since 2h --type configs -v
-dirtrack /path/to/project --file .env --since 30d
-```
-
-### Output
-
-**Summary (default):**
-```
 /Volumes/WS4TB — since 7d — type: secrets
 
   #  Project               Changes   Last modified
@@ -52,70 +13,165 @@ dirtrack /path/to/project --file .env --since 30d
   2  ABXorcist                 2     1d ago
   3  ERSATZ_RAG                1     3d ago
 
-  8 files matched  |  142847 files scanned  |  0.3s
+  8 files matched  |  142,847 files scanned  |  0.3s
 ```
 
-**Verbose (`-v`):**
-```
-dram-quest  (5 changes)
-  .env                                 2h ago   secrets
-  prisma/.env.local                    3h ago   secrets
-```
+Built for developers with sprawling workspaces who need to answer **"what changed and where?"** without memorizing `find` incantations.
 
-## All Flags
+---
 
-```
-dirtrack [DIR]
+## Install
 
-  DIR                     Directory to search (default: current working dir)
-  --since <value>         2h, 7d, 30m, or ISO date 2026-01-01
-  --until <value>         End of date range (default: now)
-  --type <value>          secrets | configs | code | all | .env,.toml
-  --file <name>           Exact filename match (e.g. .env)
-  --depth <n>             Max recursion depth
-  --open                  Prompt to open result dir in Finder after scan
-  -v, --verbose           Show individual files under each directory
-  --save <name>           Save current flags as a named preset
-  --run <name>            Re-run a saved preset
-  --history               Show last 5 searches
-```
-
-## File Type Presets
-
-| Preset    | Extensions |
-|-----------|-----------|
-| `secrets` | `.env` `.key` `.pem` `.p12` `.pfx` `.secret` |
-| `configs` | `.yaml` `.yml` `.toml` `.json` `.ini` `.conf` |
-| `code`    | `.rs` `.ts` `.tsx` `.py` `.go` `.js` |
-| `all`     | no filter |
-
-Custom: pass comma-separated extensions — `--type .env,.toml`
-
-## Presets & History
+**Requires:** Rust 1.77+ ([install](https://rustup.rs))
 
 ```bash
-# Save a named preset
+git clone https://github.com/deesatzed/mydisasters.git
+cd mydisasters/dirtrack
+cargo install --path .
+```
+
+Installs `dirtrack` to `~/.cargo/bin/dirtrack` (already on your `$PATH` if you use rustup).
+
+---
+
+## Two ways to use it
+
+### Interactive mode — run bare, no flags needed
+
+```
+$ dirtrack
+
+  Start dir:  [/Volumes/WS4TB]
+  Since when? > 2h  7d  30d  custom  no filter
+  File types? > all  secrets  configs  code  custom
+  Show file details? > summary only  verbose
+  Open result in Finder? > no  yes
+
+▶ Ran: dirtrack /Volumes/WS4TB --since 7d --type secrets
+```
+
+Arrow keys to select. The tool echoes the equivalent command so you learn flags at your own pace.
+
+### Direct mode — flags for speed
+
+```bash
+# What secrets files changed this week across my workspace?
+dirtrack /Volumes/WS4TB --since 7d --type secrets
+
+# What configs changed in the last 2 hours, with file details?
+dirtrack . --since 2h --type configs -v
+
+# Did anyone touch a .env file in the last month?
+dirtrack /var/www --since 30d --file .env
+
+# Limit depth to avoid diving into vendored deps
+dirtrack . --since 7d --type code --depth 3
+```
+
+---
+
+## All flags
+
+```
+dirtrack [DIR] [OPTIONS]
+
+ARGS:
+  [DIR]             Directory to search (default: current working dir)
+
+OPTIONS:
+  --since <value>   Time range start — natural: 2h, 7d, 30m  or  ISO: 2026-01-01
+  --until <value>   Time range end (default: now)
+  --type <value>    secrets | configs | code | all | custom (.env,.toml)
+  --file <name>     Exact filename match — e.g. .env, docker-compose.yml
+  --depth <n>       Max recursion depth
+  --open            After results, prompt to open a directory in Finder (macOS)
+  -v, --verbose     Show individual files under each directory
+  --save <name>     Save current search as a named preset
+  --run <name>      Re-run a saved preset
+  --history         Show last 5 searches
+  -h, --help        Print help
+```
+
+---
+
+## File type presets
+
+| Preset | Extensions matched |
+|--------|--------------------|
+| `secrets` | `.env` `.key` `.pem` `.p12` `.pfx` `.secret` |
+| `configs` | `.yaml` `.yml` `.toml` `.json` `.ini` `.conf` |
+| `code` | `.rs` `.ts` `.tsx` `.py` `.go` `.js` |
+| `all` | everything (no filter) |
+| custom | pass comma-separated: `--type .env,.toml` |
+
+---
+
+## Presets and history
+
+Never retype the same search twice:
+
+```bash
+# Save a search
 dirtrack /Volumes/WS4TB --since 1d --type secrets --save daily
 
-# Re-run it later
+# Re-run it any time
 dirtrack --run daily
 
-# See last 5 searches (saved automatically in interactive mode)
+# See last 5 interactive searches
 dirtrack --history
 ```
 
-Presets and history persist at `~/.config/dirtrack/history.json`.
+Saved at `~/.config/dirtrack/history.json` — human-readable JSON.
 
-## Automatically Skipped
+---
 
-`target/`, `.git/`, `node_modules/`, `.next/`, `__pycache__/`
+## Verbose output
+
+Add `-v` to see every file, not just the directory summary:
+
+```
+$ dirtrack /Volumes/WS4TB --since 7d --type secrets -v
+
+dram-quest  (5 changes)
+  .env                                 2h ago    secrets
+  prisma/.env.local                    3h ago    secrets
+  src/lib/.env.test                    6h ago    secrets
+
+ABXorcist  (2 changes)
+  config/.env                          1d ago    secrets
+  .env.staging                         2d ago    secrets
+```
+
+---
+
+## Automatically skipped
+
+These directories are always excluded to keep results clean:
+
+`target/`  `node_modules/`  `.git/`  `.next/`  `__pycache__/`
+
+---
 
 ## Performance
 
-Scans ~14.5M files in ~60 seconds on a large workspace drive (macOS, external HDD).
+| Workspace size | Time |
+|----------------|------|
+| ~3,600 files | < 0.1s |
+| ~142,000 files | ~0.3s |
+| ~14,500,000 files (external HDD) | ~59s |
 
-## Limitations
+Rust + `walkdir` — single-threaded, zero heap allocation per file beyond what the OS gives you.
 
-- macOS only (uses `open` for Finder integration)
-- Uses `mtime` — a moved/copied file retains its original modification time
-- Cannot distinguish "modified" from "added" without a baseline snapshot
+---
+
+## How it works
+
+Uses the OS `stat()` syscall on every file to read modification time (`mtime`). No indexing, no daemon, no background process. Results are always fresh from the filesystem.
+
+**Limitation:** A file that was *copied or moved* into a directory retains its original `mtime`, so it may not appear as "new" even though it's new in that location. Files that were *created or edited* will always appear correctly.
+
+---
+
+## License
+
+MIT
