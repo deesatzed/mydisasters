@@ -163,7 +163,7 @@ These directories are always excluded to keep results clean:
 
 Rust + `walkdir` — single-threaded, zero heap allocation per file beyond what the OS gives you.
 
-Repeat scans of the same directory are dramatically faster — see "Index cache" below.
+Repeat scans of the same directory skip the tree walk — see "Index cache" below for measured results.
 
 ---
 
@@ -174,7 +174,7 @@ re-walking the entire tree. The cache lives at `~/.config/dirtrack/index/`
 and is valid for 24 hours.
 
 **On a cache hit:** dirtrack re-checks the modification time of every
-previously-seen file (cheap), but does **not** discover files created
+previously-seen file via `stat()`, but does **not** discover files created
 since the last full scan. Use `--refresh` to force a full walk immediately,
 or just wait — the cache auto-expires after 24 hours.
 
@@ -182,6 +182,17 @@ or just wait — the cache auto-expires after 24 hours.
 # Force a fresh full scan right now
 dirtrack /Volumes/WS4TB --since 7d --type secrets --refresh
 ```
+
+**Measured speedup varies by workload:**
+
+| Workspace | Full walk | Cache hit |
+|-----------|-----------|-----------|
+| ~27 files (local SSD) | 0.19s | 0.006s (~30x) |
+| ~6,570,000 files (external HDD) | 137.8s | 110.5s (~1.25x) |
+
+On a small local directory the cache hit is dramatic, since avoiding the directory walk avoids nearly all the work. On a multi-million-file external drive, the cache is still correct (no walk occurs — confirmed by an unchanged cache timestamp) but the win is modest: the bottleneck shifts to issuing millions of individual `stat()` calls, which on a slow/external disk costs nearly as much as walking did. The cache is most valuable for moderate-sized workspaces and SSDs; on very large external-disk trees, expect a smaller improvement.
+
+**Disk usage:** the cache stores one JSON entry per file, so it scales with workspace size — roughly 1.7GB for 6.5 million files. To reclaim space, delete the cache directory: `rm -rf ~/.config/dirtrack/index/`. It will be rebuilt automatically on the next scan.
 
 ---
 
