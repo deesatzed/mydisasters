@@ -55,8 +55,9 @@ fn main() {
         && args.type_filter.is_none()
         && args.file.is_none();
 
+    let history_for_defaults = History::load_default();
     let (dir, since_str, type_spec, verbose, open_finder) = if is_interactive {
-        match run_interactive() {
+        match run_interactive(history_for_defaults.last_run()) {
             Ok(r) => (r.dir, r.since, r.type_spec, r.verbose, r.open),
             Err(e) => {
                 eprintln!("Interactive mode error: {}", e);
@@ -138,6 +139,13 @@ fn main() {
 
         let mut history = History::load_default();
         history.push(&cmd);
+        history.set_last_run(dirtrack::history::LastRun {
+            dir: dir.clone(),
+            since: since_str.clone(),
+            type_spec: type_spec.clone(),
+            verbose,
+            open: open_finder,
+        });
         let _ = history.save();
     }
 
