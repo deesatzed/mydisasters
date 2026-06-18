@@ -26,7 +26,7 @@ Built for developers with sprawling workspaces who need to answer **"what change
 
 ```bash
 git clone https://github.com/deesatzed/mydisasters.git
-cd mydisasters/dirtrack
+cd mydisasters
 cargo install --path .
 ```
 
