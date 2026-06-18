@@ -50,4 +50,8 @@ pub struct Cli {
     /// Show last 5 searches and re-run by number
     #[arg(long)]
     pub history: bool,
+
+    /// Force a full directory re-scan, ignoring the cached index
+    #[arg(long)]
+    pub refresh: bool,
 }

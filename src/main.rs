@@ -4,7 +4,7 @@ use cli::Cli;
 
 use dirtrack::{
     filters::parse_since,
-    scanner::{scan, ScanConfig},
+    scanner::ScanConfig,
     output::{print_header, print_summary, print_verbose, print_footer, print_echo_command},
     history::History,
     interactive::run_interactive,
@@ -101,19 +101,20 @@ fn main() {
         max_depth: args.depth,
     };
 
-    // Scan with timing
+    // Scan with timing (uses index cache; --refresh forces a full walk)
+    let cache_dir = home_config_dir().join("dirtrack/index");
+    let cache_file = dirtrack::index::cache_path_for_root(&cache_dir, std::path::Path::new(&dir));
+
     let start_time = Instant::now();
-    let results = scan(std::path::Path::new(&dir), &config);
+    let (results, scanned) = match dirtrack::scanner::scan_with_cache(
+        std::path::Path::new(&dir), &config, &cache_file, args.refresh,
+    ) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("Scan error: {}", e); std::process::exit(1); }
+    };
     let elapsed_ms = start_time.elapsed().as_millis();
 
     let total_files: usize = results.iter().map(|r| r.files.len()).sum();
-
-    // Count scanned files (second pass for footer stat)
-    let scanned = walkdir::WalkDir::new(&dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .count() as u64;
 
     let since_display = since_str.as_deref().unwrap_or("all time");
     let type_display = type_spec.as_deref().unwrap_or("all");
@@ -175,4 +176,10 @@ fn main() {
             }
         }
     }
+}
+
+fn home_config_dir() -> std::path::PathBuf {
+    std::env::var("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".config"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(".config"))
 }

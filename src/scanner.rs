@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use walkdir::WalkDir;
 use crate::filters::{matches_type, matches_filename};
+use crate::index::load_or_refresh;
 
 #[derive(Debug, Clone)]
 pub struct FileEntry {
@@ -26,30 +26,21 @@ pub struct ScanConfig {
     pub max_depth: Option<usize>,
 }
 
-pub fn scan(start: &Path, config: &ScanConfig) -> Vec<DirResult> {
-    let mut walker = WalkDir::new(start).follow_links(false);
-    if let Some(d) = config.max_depth {
-        walker = walker.max_depth(d);
-    }
+/// Scans `start` using the index cache at `cache_file` (full walk on cache miss/stale/refresh,
+/// re-stat-only fast path on cache hit). Returns matching results plus total files scanned.
+pub fn scan_with_cache(
+    start: &Path,
+    config: &ScanConfig,
+    cache_file: &Path,
+    refresh: bool,
+) -> Result<(Vec<DirResult>, u64), String> {
+    let (candidates, scanned_count) = load_or_refresh(start, cache_file, refresh)?;
 
     let mut dir_map: std::collections::BTreeMap<PathBuf, Vec<FileEntry>> =
         std::collections::BTreeMap::new();
 
-    // Directories to always skip (build artifacts, version control internals)
-    let skip_dirs = ["target", ".git", "node_modules", ".next", "__pycache__"];
-
-    for entry in walker.into_iter().filter_entry(|e| {
-        if e.file_type().is_dir() {
-            let name = e.file_name().to_string_lossy();
-            return !skip_dirs.contains(&name.as_ref());
-        }
-        true
-    }).filter_map(|e| e.ok()) {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        let path = entry.path().to_path_buf();
+    for cached in candidates {
+        let path = cached.path;
         let name = match path.file_name() {
             Some(n) => n.to_string_lossy().to_string(),
             None => continue,
@@ -65,27 +56,22 @@ pub fn scan(start: &Path, config: &ScanConfig) -> Vec<DirResult> {
                 continue;
             }
         }
-
         if let Some(ref tspec) = config.type_spec {
             if !matches_type(&ext, tspec) {
                 continue;
             }
         }
-
-        let metadata = match entry.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let mtime = match metadata.modified() {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
-
+        if let Some(ref max_depth) = config.max_depth {
+            let depth = path.strip_prefix(start).map(|p| p.components().count()).unwrap_or(0);
+            if depth > *max_depth {
+                continue;
+            }
+        }
         if let Some(since) = config.since {
-            if mtime < since { continue; }
+            if cached.mtime < since { continue; }
         }
         if let Some(until) = config.until {
-            if mtime > until { continue; }
+            if cached.mtime > until { continue; }
         }
 
         let dir = path.parent().unwrap_or(start).to_path_buf();
@@ -94,18 +80,36 @@ pub fn scan(start: &Path, config: &ScanConfig) -> Vec<DirResult> {
         dir_map.entry(dir).or_default().push(FileEntry {
             name,
             path,
-            mtime,
-            size: metadata.len(),
+            mtime: cached.mtime,
+            size: cached.size,
             type_label,
         });
     }
 
-    dir_map.into_iter()
+    let results = dir_map.into_iter()
         .map(|(dir, mut files)| {
             files.sort_by(|a, b| b.mtime.cmp(&a.mtime));
             DirResult { dir, files }
         })
-        .collect()
+        .collect();
+
+    Ok((results, scanned_count))
+}
+
+/// Convenience wrapper for callers that don't need cache persistence (e.g. existing tests).
+/// Always does a full walk — never reads or writes a real cache file.
+pub fn scan(start: &Path, config: &ScanConfig) -> Vec<DirResult> {
+    let tmp_cache = std::env::temp_dir().join(format!(
+        "dirtrack-scan-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let result = scan_with_cache(start, config, &tmp_cache, true);
+    let _ = std::fs::remove_file(&tmp_cache);
+    result.map(|(results, _count)| results).unwrap_or_default()
 }
 
 fn classify_type(ext: &str) -> String {
