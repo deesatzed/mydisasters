@@ -1,6 +1,7 @@
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use colored::Colorize;
-use crate::scanner::DirResult;
+use crate::scanner::{DirResult, FileEntry};
 
 pub fn format_relative_time(t: SystemTime) -> String {
     let elapsed = t.elapsed().unwrap_or_default();
@@ -43,20 +44,21 @@ pub fn print_header(dir: &str, since: &str, type_spec: &str) {
     println!("  {}", "─".repeat(52).dimmed());
 }
 
-pub fn print_summary(results: &[DirResult], start_dir: &str) {
-    let start = std::path::Path::new(start_dir);
+pub fn project_name(result: &DirResult, start: &Path) -> String {
+    result.dir
+        .strip_prefix(start)
+        .ok()
+        .and_then(|p| p.components().next())
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .unwrap_or_else(|| result.dir.to_string_lossy().to_string())
+}
 
-    // Group by top-level project name, accumulating counts and tracking latest mtime
+pub fn build_summary_groups(results: &[DirResult], start_dir: &str) -> Vec<(String, usize, SystemTime)> {
+    let start = Path::new(start_dir);
     let mut groups: Vec<(String, usize, SystemTime)> = Vec::new();
 
     for result in results {
-        let project = result.dir
-            .strip_prefix(start)
-            .ok()
-            .and_then(|p| p.components().next())
-            .map(|c| c.as_os_str().to_string_lossy().to_string())
-            .unwrap_or_else(|| result.dir.to_string_lossy().to_string());
-
+        let project = project_name(result, start);
         let last_mtime = result.files.iter()
             .map(|f| f.mtime)
             .max()
@@ -72,30 +74,85 @@ pub fn print_summary(results: &[DirResult], start_dir: &str) {
         }
     }
 
-    for (i, (project, count, last_mtime)) in groups.iter().enumerate() {
+    groups.sort_by_key(|(_, _, last_mtime)| std::cmp::Reverse(*last_mtime));
+    groups
+}
+
+pub struct OpenChoice {
+    pub project: String,
+    pub path: PathBuf,
+    pub count: usize,
+    pub last_mtime: SystemTime,
+}
+
+pub fn build_open_choices(results: &[DirResult], start_dir: &str) -> Vec<OpenChoice> {
+    let start = Path::new(start_dir);
+    build_summary_groups(results, start_dir)
+        .into_iter()
+        .map(|(project, count, last_mtime)| OpenChoice {
+            path: start.join(&project),
+            project,
+            count,
+            last_mtime,
+        })
+        .collect()
+}
+
+pub fn build_verbose_groups(results: &[DirResult], start_dir: &str) -> Vec<(String, Vec<FileEntry>)> {
+    let start = Path::new(start_dir);
+    build_summary_groups(results, start_dir)
+        .into_iter()
+        .map(|(project, _, _)| {
+            let mut files: Vec<FileEntry> = results
+                .iter()
+                .filter(|result| project_name(result, start) == project)
+                .flat_map(|result| result.files.iter().cloned())
+                .collect();
+            files.sort_by_key(|f| std::cmp::Reverse(f.mtime));
+            (project, files)
+        })
+        .collect()
+}
+
+pub fn print_summary(results: &[DirResult], start_dir: &str) {
+    for (i, (project, count, last_mtime)) in build_summary_groups(results, start_dir).iter().enumerate() {
         println!("{}", format_summary_line(i + 1, project, *count, *last_mtime));
     }
 }
 
 pub fn print_verbose(results: &[DirResult], start_dir: &str) {
-    let start = std::path::Path::new(start_dir);
-    for result in results {
-        let rel = result.dir.strip_prefix(start)
-            .unwrap_or(&result.dir)
-            .to_string_lossy();
+    let start = Path::new(start_dir);
+    for (project, files) in build_verbose_groups(results, start_dir) {
         println!("\n{}  ({} change{})",
-            rel.cyan().bold(),
-            result.files.len(),
-            if result.files.len() == 1 { "" } else { "s" }
+            project.cyan().bold(),
+            files.len(),
+            if files.len() == 1 { "" } else { "s" }
         );
-        for f in &result.files {
+        for f in &files {
+            let rel = f.path.strip_prefix(start)
+                .unwrap_or(&f.path)
+                .to_string_lossy();
             let mtime_str = format_relative_time(f.mtime);
             println!("  {:<35}  {}  {}",
-                f.name.white(),
+                rel.white(),
                 mtime_str.yellow(),
                 f.type_label.dimmed()
             );
         }
+    }
+}
+
+pub fn print_open_prompt(choices: &[OpenChoice]) {
+    println!("\nOpen which? [1-{}, or Enter to skip]:", choices.len());
+    for (i, choice) in choices.iter().enumerate() {
+        println!(
+            "  {}  {} ({} change{}, {})",
+            i + 1,
+            choice.project,
+            choice.count,
+            if choice.count == 1 { "" } else { "s" },
+            format_relative_time(choice.last_mtime)
+        );
     }
 }
 

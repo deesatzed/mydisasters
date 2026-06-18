@@ -45,12 +45,12 @@ $ dirtrack
   Since when? > 2h  7d  30d  custom  no filter
   File types? > all  secrets  configs  code  custom
   Show file details? > summary only  verbose
-  Open result in Finder? > no  yes
+  Open result in file manager? > no  yes
 
 ▶ Ran: dirtrack /Volumes/WS4TB --since 7d --type secrets
 ```
 
-Arrow keys to select. The tool echoes the equivalent command so you learn flags at your own pace.
+Arrow keys to select. Prompts prefill from your last run. The tool echoes the equivalent command so you learn flags at your own pace.
 
 ### Direct mode — flags for speed
 
@@ -84,13 +84,15 @@ OPTIONS:
   --type <value>    secrets | configs | code | all | custom (.env,.toml)
   --file <name>     Exact filename match — e.g. .env, docker-compose.yml
   --depth <n>       Max recursion depth
-  --open            After results, prompt to open a directory in Finder (macOS)
-  -v, --verbose     Show individual files under each directory
+  --open            After results, prompt to open a project in your file manager
+  -v, --verbose     Show individual files grouped by project, most recent first
   --save <name>     Save current search as a named preset
-  --run <name>      Re-run a saved preset
-  --history         Show last 5 searches
+  --run <target>    Re-run a preset by name, or history entry as !1, !2, ...
+  --history         Show last 5 interactive searches
+  --completions <shell>  Generate shell completions (bash, zsh, fish, powershell, elvish)
   --refresh         Force a full re-scan, ignoring the cached index
   -h, --help        Print help
+  -V, --version     Print version
 ```
 
 ---
@@ -112,17 +114,22 @@ OPTIONS:
 Never retype the same search twice:
 
 ```bash
-# Save a search
-dirtrack /Volumes/WS4TB --since 1d --type secrets --save daily
+# Save a search (paths with spaces work correctly)
+dirtrack "/Volumes/My Disk" --since 1d --type secrets --save daily
 
-# Re-run it any time
+# Re-run a named preset
 dirtrack --run daily
 
 # See last 5 interactive searches
 dirtrack --history
+
+# Re-run the most recent interactive search
+dirtrack --run !1
 ```
 
-Saved at `~/.config/dirtrack/history.json` — human-readable JSON.
+Saved at `$XDG_CONFIG_HOME/dirtrack/history.json` (defaults to `~/.config/dirtrack/history.json`). Presets and history store structured args, not shell strings — so paths with spaces survive round-trips.
+
+Direct-mode runs update `last_run` so interactive prompts stay in sync even if you only use flags.
 
 ---
 
@@ -141,6 +148,23 @@ dram-quest  (5 changes)
 ABXorcist  (2 changes)
   config/.env                          1d ago    secrets
   .env.staging                         2d ago    secrets
+```
+
+Projects are sorted by most recently modified. Within each project, files are sorted the same way.
+
+---
+
+## Shell completions
+
+```bash
+# zsh
+dirtrack --completions zsh > "${fpath[1]}/_dirtrack"
+
+# bash
+dirtrack --completions bash > /etc/bash_completion.d/dirtrack
+
+# fish
+dirtrack --completions fish > ~/.config/fish/completions/dirtrack.fish
 ```
 
 ---
@@ -170,8 +194,8 @@ Repeat scans of the same directory skip the tree walk — see "Index cache" belo
 ## Index cache
 
 Repeat scans of the same directory reuse a cached file list instead of
-re-walking the entire tree. The cache lives at `~/.config/dirtrack/index/`
-and is valid for 24 hours.
+re-walking the entire tree. The cache lives at `$XDG_CONFIG_HOME/dirtrack/index/`
+(defaults to `~/.config/dirtrack/index/`) and is valid for 24 hours.
 
 **On a cache hit:** dirtrack re-checks the modification time of every
 previously-seen file via `stat()`, but does **not** discover files created

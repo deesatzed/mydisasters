@@ -1,5 +1,5 @@
 use std::time::{Duration, SystemTime};
-use dirtrack::filters::{parse_since, matches_type, matches_filename};
+use dirtrack::filters::{classify_type, parse_since, matches_type, matches_filename};
 
 #[test]
 fn test_parse_since_hours() {
@@ -61,4 +61,12 @@ fn test_matches_type_custom_extensions() {
 fn test_matches_filename_exact() {
     assert!(matches_filename(".env", ".env"));
     assert!(!matches_filename(".env.local", ".env"));
+}
+
+#[test]
+fn test_classify_type_uses_presets() {
+    assert_eq!(classify_type(".env"), "secrets");
+    assert_eq!(classify_type(".yaml"), "configs");
+    assert_eq!(classify_type(".rs"), "code");
+    assert_eq!(classify_type(".md"), "other");
 }

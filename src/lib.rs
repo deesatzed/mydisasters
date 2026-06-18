@@ -1,3 +1,4 @@
+pub mod config;
 pub mod filters;
 pub mod scanner;
 pub mod history;

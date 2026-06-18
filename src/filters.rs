@@ -41,3 +41,16 @@ pub fn matches_type(file_ext: &str, type_spec: &str) -> bool {
 pub fn matches_filename(filename: &str, filter: &str) -> bool {
     filename == filter
 }
+
+pub fn classify_type(ext: &str) -> String {
+    let ext_lower = ext.to_lowercase();
+    if SECRETS.contains(&ext_lower.as_str()) {
+        "secrets".to_string()
+    } else if CONFIGS.contains(&ext_lower.as_str()) {
+        "configs".to_string()
+    } else if CODE.contains(&ext_lower.as_str()) {
+        "code".to_string()
+    } else {
+        "other".to_string()
+    }
+}

@@ -1,8 +1,10 @@
 use clap::Parser;
+use clap_complete::Shell;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "dirtrack",
+    version,
     about = "Find directories with recently changed files",
     long_about = "Scans a directory tree and reports which folders contain files \
                   changed within a time window. Run with no args for interactive mode."
@@ -31,7 +33,7 @@ pub struct Cli {
     #[arg(long)]
     pub depth: Option<usize>,
 
-    /// After results, prompt to open a directory in Finder
+    /// After results, prompt to open a directory in the system file manager
     #[arg(long)]
     pub open: bool,
 
@@ -43,13 +45,17 @@ pub struct Cli {
     #[arg(long)]
     pub save: Option<String>,
 
-    /// Re-run a saved preset by name
+    /// Re-run a saved preset by name, or a history entry as !1, !2, ...
     #[arg(long)]
     pub run: Option<String>,
 
-    /// Show last 5 searches and re-run by number
+    /// Show last 5 interactive searches
     #[arg(long)]
     pub history: bool,
+
+    /// Generate shell completions (bash, zsh, fish, powershell, elvish)
+    #[arg(long, value_enum)]
+    pub completions: Option<Shell>,
 
     /// Force a full directory re-scan, ignoring the cached index
     #[arg(long)]

@@ -1,12 +1,13 @@
 mod cli;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use cli::Cli;
 
 use dirtrack::{
+    config::config_dir,
     filters::parse_since,
     scanner::ScanConfig,
-    output::{print_header, print_summary, print_verbose, print_footer, print_echo_command},
-    history::History,
+    output::{print_header, print_summary, print_verbose, print_footer, print_echo_command, build_open_choices, print_open_prompt},
+    history::{History, LastRun, build_preset_args, format_preset_command},
     interactive::run_interactive,
 };
 use std::time::{Instant, SystemTime};
@@ -14,6 +15,11 @@ use std::process::Command;
 
 fn main() {
     let args = Cli::parse();
+
+    if let Some(shell) = args.completions {
+        clap_complete::generate(shell, &mut Cli::command(), "dirtrack", &mut std::io::stdout());
+        return;
+    }
 
     // --history: show last 5 searches
     if args.history {
@@ -25,25 +31,39 @@ fn main() {
         }
         println!("\nLast {} searches:", entries.len());
         for (i, e) in entries.iter().enumerate() {
-            println!("  !{}  {}  ({})", i + 1, e.command, e.ran_at);
+            println!("  !{}  {}  ({})", i + 1, e.command(), e.ran_at);
         }
+        println!("\nRe-run with: dirtrack --run !1");
         return;
     }
 
-    // --run <preset>: re-run a saved preset
-    if let Some(ref preset_name) = args.run {
+    // --run <preset>: re-run a saved preset or history entry (!N)
+    if let Some(ref run_target) = args.run {
         let history = History::load_default();
-        match history.get_preset(preset_name) {
-            Some(cmd) => {
-                println!("Running preset '{}': {}", preset_name, cmd);
-                let parts: Vec<&str> = cmd.split_whitespace().collect();
-                if parts.len() > 1 {
-                    let _ = Command::new(&parts[0]).args(&parts[1..]).status();
-                }
+        let preset_args = if let Some(num_str) = run_target.strip_prefix('!') {
+            num_str
+                .parse::<usize>()
+                .ok()
+                .and_then(|n| history.get_entry(n))
+        } else {
+            history.get_preset(run_target)
+        };
+
+        match preset_args {
+            Some(args) if !args.is_empty() => {
+                println!(
+                    "Running '{}': {}",
+                    run_target,
+                    format_preset_command(args)
+                );
+                let _ = Command::new(&args[0]).args(&args[1..]).status();
                 return;
             }
-            None => {
-                eprintln!("Preset '{}' not found. Use --history to list saved presets.", preset_name);
+            _ => {
+                eprintln!(
+                    "Target '{}' not found. Use --history to list searches or save a preset with --save.",
+                    run_target
+                );
                 std::process::exit(1);
             }
         }
@@ -102,7 +122,7 @@ fn main() {
     };
 
     // Scan with timing (uses index cache; --refresh forces a full walk)
-    let cache_dir = home_config_dir().join("dirtrack/index");
+    let cache_dir = config_dir().join("dirtrack/index");
     let cache_file = dirtrack::index::cache_path_for_root(&cache_dir, std::path::Path::new(&dir));
 
     let start_time = Instant::now();
@@ -130,17 +150,26 @@ fn main() {
 
     print_footer(total_files, scanned, elapsed_ms);
 
+    let command_args = build_preset_args(&dir, &since_str, &type_spec, verbose);
+    let command_display = format_preset_command(&command_args);
+
     // Echo command in interactive mode and save to history
     if is_interactive {
-        let mut cmd = format!("dirtrack {}", dir);
-        if let Some(ref s) = since_str { cmd.push_str(&format!(" --since {}", s)); }
-        if let Some(ref t) = type_spec { cmd.push_str(&format!(" --type {}", t)); }
-        if verbose { cmd.push_str(" --verbose"); }
-        print_echo_command(&cmd);
-
+        print_echo_command(&command_display);
         let mut history = History::load_default();
-        history.push(&cmd);
-        history.set_last_run(dirtrack::history::LastRun {
+        history.push_args(&command_args);
+        history.set_last_run(LastRun {
+            dir: dir.clone(),
+            since: since_str.clone(),
+            type_spec: type_spec.clone(),
+            verbose,
+            open: open_finder,
+        });
+        let _ = history.save();
+    } else {
+        // Direct mode: update last_run so interactive prompts stay in sync
+        let mut history = History::load_default();
+        history.set_last_run(LastRun {
             dir: dir.clone(),
             since: since_str.clone(),
             type_spec: type_spec.clone(),
@@ -152,34 +181,28 @@ fn main() {
 
     // --save preset
     if let Some(ref preset_name) = args.save {
-        let mut cmd = format!("dirtrack {}", dir);
-        if let Some(ref s) = since_str { cmd.push_str(&format!(" --since {}", s)); }
-        if let Some(ref t) = type_spec { cmd.push_str(&format!(" --type {}", t)); }
         let mut history = History::load_default();
-        history.save_preset(preset_name, &cmd);
+        history.save_preset(preset_name, &command_args);
         let _ = history.save();
         println!("Preset '{}' saved.", preset_name);
     }
 
-    // --open: prompt to open a dir in Finder
+    // --open: prompt to open a project in the system file manager
     if open_finder && !results.is_empty() {
-        println!("\nOpen which? [1-{}, or Enter to skip]:", results.len());
+        let choices = build_open_choices(&results, &dir);
+        print_open_prompt(&choices);
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap_or(0);
         let trimmed = input.trim();
         if !trimmed.is_empty() {
             if let Ok(n) = trimmed.parse::<usize>() {
-                if n >= 1 && n <= results.len() {
-                    let path = &results[n - 1].dir;
-                    let _ = Command::new("open").arg(path).status();
+                if n >= 1 && n <= choices.len() {
+                    let path = &choices[n - 1].path;
+                    if let Err(e) = opener::open(path) {
+                        eprintln!("Could not open {}: {}", path.display(), e);
+                    }
                 }
             }
         }
     }
-}
-
-fn home_config_dir() -> std::path::PathBuf {
-    std::env::var("HOME")
-        .map(|h| std::path::PathBuf::from(h).join(".config"))
-        .unwrap_or_else(|_| std::path::PathBuf::from(".config"))
 }

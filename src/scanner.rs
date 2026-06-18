@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use crate::filters::{matches_type, matches_filename};
+use crate::filters::{classify_type, matches_type, matches_filename};
 use crate::index::load_or_refresh;
 
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ pub fn scan_with_cache(
 
     let results = dir_map.into_iter()
         .map(|(dir, mut files)| {
-            files.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+            files.sort_by_key(|f| std::cmp::Reverse(f.mtime));
             DirResult { dir, files }
         })
         .collect();
@@ -112,11 +112,4 @@ pub fn scan(start: &Path, config: &ScanConfig) -> Vec<DirResult> {
     result.map(|(results, _count)| results).unwrap_or_default()
 }
 
-fn classify_type(ext: &str) -> String {
-    match ext {
-        e if [".env", ".key", ".pem", ".p12", ".pfx", ".secret"].contains(&e) => "secrets".to_string(),
-        e if [".yaml", ".yml", ".toml", ".json", ".ini", ".conf"].contains(&e) => "configs".to_string(),
-        e if [".rs", ".ts", ".tsx", ".py", ".go", ".js"].contains(&e) => "code".to_string(),
-        _ => "other".to_string(),
-    }
-}
+

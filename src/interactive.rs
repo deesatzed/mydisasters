@@ -96,7 +96,7 @@ pub fn run_interactive(last_run: Option<&LastRun>) -> Result<InteractiveResult, 
 
     let open_default_idx = if last_run.map(|r| r.open).unwrap_or(false) { 1 } else { 0 };
     let open_idx = Select::with_theme(&theme)
-        .with_prompt("Open result in Finder?")
+        .with_prompt("Open result in file manager?")
         .items(&["no", "yes (prompt after results)"])
         .default(open_default_idx)
         .interact()

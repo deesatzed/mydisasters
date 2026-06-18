@@ -243,21 +243,21 @@
     <a href="#install">Install</a>
     <a href="#features">Features</a>
     <a href="#usage">Usage</a>
-    <a href="https://github.com/deesatzed/mydisasters/tree/master/dirtrack">Docs</a>
+    <a href="https://github.com/deesatzed/mydisasters#readme">Docs</a>
   </div>
-  <a class="nav-cta" href="https://github.com/deesatzed/mydisasters/tree/master/dirtrack">View on GitHub</a>
+  <a class="nav-cta" href="https://github.com/deesatzed/mydisasters">View on GitHub</a>
 </nav>
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-badge">Built in Rust &bull; Zero dependencies at runtime &bull; macOS</div>
+  <div class="hero-badge">Built in Rust &bull; Zero network I/O &bull; macOS / Linux / Windows</div>
   <h1>Find what changed.<br><span>Where it changed.</span><br>Right now.</h1>
   <p class="hero-sub">
     A fast CLI for developers with multi-project workspaces. Scan millions of files, find recently changed directories, and open them instantly — without memorizing <code>find</code> flags.
   </p>
   <div class="hero-actions">
     <a class="btn-primary" href="#install">Get started</a>
-    <a class="btn-secondary" href="https://github.com/deesatzed/mydisasters/tree/master/dirtrack">GitHub &rarr;</a>
+    <a class="btn-secondary" href="https://github.com/deesatzed/mydisasters">GitHub &rarr;</a>
   </div>
 </section>
 
@@ -302,6 +302,7 @@
       <span class="t-line"><span class="t-dim">  Since when? </span><span class="t-green">▶ 7d</span>  <span class="t-dim">2h  30d  custom  no filter</span></span>
       <span class="t-line"><span class="t-dim">  File types? </span><span class="t-green">▶ secrets</span>  <span class="t-dim">configs  code  all  custom</span></span>
       <span class="t-line"><span class="t-dim">  Show files? </span><span class="t-green">▶ summary only</span>  <span class="t-dim">verbose</span></span>
+      <span class="t-line"><span class="t-dim">  Open in file manager? </span><span class="t-green">▶ no</span>  <span class="t-dim">yes</span></span>
       <span class="t-blank"></span>
       <span class="t-line"><span class="t-purple">▶ Ran:</span> <span class="t-cmd">dirtrack /Volumes/WS4TB --since 7d --type secrets</span></span>
     </div>
@@ -331,17 +332,27 @@
     <div class="feature-card">
       <div class="feature-icon">💾</div>
       <h3>Presets & history</h3>
-      <p>Save any search with <code>--save daily</code>. Re-run with <code>--run daily</code>. Last 5 searches remembered automatically.</p>
+      <p>Save with <code>--save daily</code>. Re-run presets or history entries (<code>--run !1</code>). Paths with spaces work — args are stored structurally, not as shell strings.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🗂️</div>
       <h3>Project-grouped output</h3>
-      <p>Results roll up to your top-level project directories. See which projects had activity, not a flat list of 200 subdirectories.</p>
+      <p>Results roll up to top-level projects, sorted by most recently modified. Verbose mode groups the same way with relative file paths.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🔍</div>
-      <h3>Open in Finder</h3>
-      <p>Add <code>--open</code> and pick a number after the results. That directory opens in Finder immediately. No copy-pasting paths.</p>
+      <h3>Open in file manager</h3>
+      <p>Add <code>--open</code> and pick a project after results. Opens the project root in Finder, Files, or Explorer — no copy-pasting paths.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚙️</div>
+      <h3>Index cache</h3>
+      <p>Repeat scans skip the directory walk and re-stat known files. 24h TTL with <code>--refresh</code> escape hatch. Dramatic speedup on SSDs.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⌨️</div>
+      <h3>Shell completions</h3>
+      <p>Generate completions for bash, zsh, fish, PowerShell, and elvish with <code>--completions zsh</code>. Tab-complete every flag.</p>
     </div>
   </div>
 </section>
@@ -357,7 +368,10 @@
     cargo install --path .<br>
     <br>
     <span class="comment"># Verify</span><br>
-    <span class="cmd-green">dirtrack --help</span>
+    <span class="cmd-green">dirtrack --version</span><br>
+    <br>
+    <span class="comment"># Shell completions (zsh example)</span><br>
+    dirtrack --completions zsh &gt; ~/.zfunc/_dirtrack
   </div>
 </section>
 
@@ -384,14 +398,15 @@
       <div class="code-block" style="margin-bottom:1rem;">
         <span class="comment"># Save a daily check</span><br>
         dirtrack . --since 1d --save daily<br>
-        dirtrack --run daily
+        dirtrack --run daily<br>
+        dirtrack --run !1
       </div>
       <div class="code-block" style="margin-bottom:1rem;">
         <span class="comment"># Limit depth (skip vendored deps)</span><br>
         dirtrack . --since 7d --depth 3
       </div>
       <div class="code-block">
-        <span class="comment"># Open result in Finder</span><br>
+        <span class="comment"># Open result in file manager</span><br>
         dirtrack . --since 2h --open
       </div>
     </div>
@@ -418,7 +433,7 @@
 
 <footer>
   <p>
-    <a href="https://github.com/deesatzed/mydisasters/tree/master/dirtrack">GitHub</a>
+    <a href="https://github.com/deesatzed/mydisasters">GitHub</a>
     &nbsp;&bull;&nbsp;
     MIT License
     &nbsp;&bull;&nbsp;

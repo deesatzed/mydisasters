@@ -1,12 +1,60 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use chrono::Utc;
+use crate::config::config_dir;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HistoryEntry {
-    pub command: String,
+    pub args: Vec<String>,
     pub ran_at: String,
+}
+
+impl HistoryEntry {
+    pub fn command(&self) -> String {
+        format_preset_command(&self.args)
+    }
+}
+
+impl Serialize for HistoryEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct EntrySer<'a> {
+            args: &'a [String],
+            ran_at: &'a str,
+        }
+        EntrySer {
+            args: &self.args,
+            ran_at: &self.ran_at,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for HistoryEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct EntryDe {
+            #[serde(default)]
+            args: Vec<String>,
+            #[serde(default)]
+            command: String,
+            ran_at: String,
+        }
+        let raw = EntryDe::deserialize(deserializer)?;
+        let args = if !raw.args.is_empty() {
+            raw.args
+        } else {
+            raw.command.split_whitespace().map(str::to_string).collect()
+        };
+        Ok(HistoryEntry { args, ran_at: raw.ran_at })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,9 +68,43 @@ pub struct LastRun {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct HistoryFile {
+    #[serde(default, deserialize_with = "deserialize_entries")]
     entries: Vec<HistoryEntry>,
-    presets: HashMap<String, String>,
+    #[serde(default, deserialize_with = "deserialize_presets")]
+    presets: HashMap<String, Vec<String>>,
     last_run: Option<LastRun>,
+}
+
+fn deserialize_entries<'de, D>(deserializer: D) -> Result<Vec<HistoryEntry>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Vec::<HistoryEntry>::deserialize(deserializer)
+}
+
+fn deserialize_presets<'de, D>(deserializer: D) -> Result<HashMap<String, Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw: HashMap<String, serde_json::Value> =
+        HashMap::deserialize(deserializer).unwrap_or_default();
+    Ok(raw
+        .into_iter()
+        .filter_map(|(name, value)| match value {
+            serde_json::Value::Array(items) => {
+                let args: Vec<String> = items
+                    .into_iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                (!args.is_empty()).then_some((name, args))
+            }
+            serde_json::Value::String(cmd) => {
+                let args: Vec<String> = cmd.split_whitespace().map(str::to_string).collect();
+                (!args.is_empty()).then_some((name, args))
+            }
+            _ => None,
+        })
+        .collect())
 }
 
 pub struct History {
@@ -44,7 +126,7 @@ impl History {
     }
 
     pub fn load_default() -> Self {
-        let path = home_config_dir().join("dirtrack/history.json");
+        let path = config_dir().join("dirtrack/history.json");
         Self::new(path)
     }
 
@@ -52,20 +134,27 @@ impl History {
         &self.data.entries
     }
 
-    pub fn push(&mut self, command: &str) {
+    pub fn push_args(&mut self, args: &[String]) {
         self.data.entries.insert(0, HistoryEntry {
-            command: command.to_string(),
+            args: args.to_vec(),
             ran_at: Utc::now().to_rfc3339(),
         });
         self.data.entries.truncate(5);
     }
 
-    pub fn save_preset(&mut self, name: &str, command: &str) {
-        self.data.presets.insert(name.to_string(), command.to_string());
+    pub fn get_entry(&self, index: usize) -> Option<&[String]> {
+        if index == 0 {
+            return None;
+        }
+        self.data.entries.get(index - 1).map(|e| e.args.as_slice())
     }
 
-    pub fn get_preset(&self, name: &str) -> Option<&str> {
-        self.data.presets.get(name).map(|s| s.as_str())
+    pub fn save_preset(&mut self, name: &str, args: &[String]) {
+        self.data.presets.insert(name.to_string(), args.to_vec());
+    }
+
+    pub fn get_preset(&self, name: &str) -> Option<&[String]> {
+        self.data.presets.get(name).map(|args| args.as_slice())
     }
 
     pub fn last_run(&self) -> Option<&LastRun> {
@@ -89,8 +178,36 @@ impl History {
     }
 }
 
-fn home_config_dir() -> PathBuf {
-    std::env::var("HOME")
-        .map(|h| PathBuf::from(h).join(".config"))
-        .unwrap_or_else(|_| PathBuf::from(".config"))
+pub fn build_preset_args(
+    dir: &str,
+    since: &Option<String>,
+    type_spec: &Option<String>,
+    verbose: bool,
+) -> Vec<String> {
+    let mut args = vec!["dirtrack".to_string(), dir.to_string()];
+    if let Some(s) = since {
+        args.push("--since".to_string());
+        args.push(s.clone());
+    }
+    if let Some(t) = type_spec {
+        args.push("--type".to_string());
+        args.push(t.clone());
+    }
+    if verbose {
+        args.push("--verbose".to_string());
+    }
+    args
+}
+
+pub fn format_preset_command(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| {
+            if arg.contains(' ') {
+                format!("\"{}\"", arg)
+            } else {
+                arg.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
