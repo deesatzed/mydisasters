@@ -3,3 +3,4 @@ pub mod scanner;
 pub mod history;
 pub mod output;
 pub mod interactive;
+pub mod index;
