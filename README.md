@@ -89,6 +89,7 @@ OPTIONS:
   --save <name>     Save current search as a named preset
   --run <name>      Re-run a saved preset
   --history         Show last 5 searches
+  --refresh         Force a full re-scan, ignoring the cached index
   -h, --help        Print help
 ```
 
@@ -162,13 +163,35 @@ These directories are always excluded to keep results clean:
 
 Rust + `walkdir` — single-threaded, zero heap allocation per file beyond what the OS gives you.
 
+Repeat scans of the same directory are dramatically faster — see "Index cache" below.
+
+---
+
+## Index cache
+
+Repeat scans of the same directory reuse a cached file list instead of
+re-walking the entire tree. The cache lives at `~/.config/dirtrack/index/`
+and is valid for 24 hours.
+
+**On a cache hit:** dirtrack re-checks the modification time of every
+previously-seen file (cheap), but does **not** discover files created
+since the last full scan. Use `--refresh` to force a full walk immediately,
+or just wait — the cache auto-expires after 24 hours.
+
+```bash
+# Force a fresh full scan right now
+dirtrack /Volumes/WS4TB --since 7d --type secrets --refresh
+```
+
 ---
 
 ## How it works
 
-Uses the OS `stat()` syscall on every file to read modification time (`mtime`). No indexing, no daemon, no background process. Results are always fresh from the filesystem.
+Uses the OS `stat()` syscall on every file to read modification time (`mtime`). No daemon, no background process. Results are fresh from the filesystem on every full walk; cache hits re-stat known files only (see "Index cache" above).
 
-**Limitation:** A file that was *copied or moved* into a directory retains its original `mtime`, so it may not appear as "new" even though it's new in that location. Files that were *created or edited* will always appear correctly.
+**Limitations:**
+- A file that was *copied or moved* into a directory retains its original `mtime`, so it may not appear as "new" even though it's new in that location. Files that were *created or edited* will always appear correctly.
+- Repeat scans within 24h use a cached file list and won't see brand-new files until the cache refreshes — use `--refresh` to force immediate discovery.
 
 ---
 
