@@ -9,10 +9,20 @@ pub struct HistoryEntry {
     pub ran_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastRun {
+    pub dir: String,
+    pub since: Option<String>,
+    pub type_spec: Option<String>,
+    pub verbose: bool,
+    pub open: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct HistoryFile {
     entries: Vec<HistoryEntry>,
     presets: HashMap<String, String>,
+    last_run: Option<LastRun>,
 }
 
 pub struct History {
@@ -56,6 +66,14 @@ impl History {
 
     pub fn get_preset(&self, name: &str) -> Option<&str> {
         self.data.presets.get(name).map(|s| s.as_str())
+    }
+
+    pub fn last_run(&self) -> Option<&LastRun> {
+        self.data.last_run.as_ref()
+    }
+
+    pub fn set_last_run(&mut self, run: LastRun) {
+        self.data.last_run = Some(run);
     }
 
     pub fn save(&self) -> Result<(), String> {

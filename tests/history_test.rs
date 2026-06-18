@@ -1,5 +1,5 @@
 use tempfile::TempDir;
-use dirtrack::history::{History, HistoryEntry};
+use dirtrack::history::{History, HistoryEntry, LastRun};
 
 fn history_in_tmp(tmp: &TempDir) -> History {
     History::new(tmp.path().join("history.json"))
@@ -50,4 +50,33 @@ fn test_missing_preset_returns_none() {
     let tmp = TempDir::new().unwrap();
     let h = history_in_tmp(&tmp);
     assert!(h.get_preset("nonexistent").is_none());
+}
+
+#[test]
+fn test_last_run_round_trips() {
+    let tmp = TempDir::new().unwrap();
+    let mut h = history_in_tmp(&tmp);
+    h.set_last_run(LastRun {
+        dir: "/Volumes/WS4TB".to_string(),
+        since: Some("7d".to_string()),
+        type_spec: Some("secrets".to_string()),
+        verbose: true,
+        open: false,
+    });
+    h.save().unwrap();
+
+    let h2 = history_in_tmp(&tmp);
+    let last = h2.last_run().expect("last_run should be present");
+    assert_eq!(last.dir, "/Volumes/WS4TB");
+    assert_eq!(last.since.as_deref(), Some("7d"));
+    assert_eq!(last.type_spec.as_deref(), Some("secrets"));
+    assert!(last.verbose);
+    assert!(!last.open);
+}
+
+#[test]
+fn test_last_run_defaults_to_none() {
+    let tmp = TempDir::new().unwrap();
+    let h = history_in_tmp(&tmp);
+    assert!(h.last_run().is_none());
 }
