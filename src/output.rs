@@ -2,6 +2,44 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use colored::Colorize;
 use crate::scanner::{DirResult, FileEntry};
+use crate::trend::TrendDelta;
+use crate::aggregate::FindMatch;
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+pub fn format_size_delta(bytes: i64) -> String {
+    let sign = if bytes >= 0 { "+" } else { "-" };
+    let abs = bytes.unsigned_abs();
+    if abs < 1024 {
+        format!("{}{}B", sign, abs)
+    } else if abs < 1024 * 1024 {
+        format!("{}{:.1}KB", sign, abs as f64 / 1024.0)
+    } else if abs < 1024 * 1024 * 1024 {
+        format!("{}{:.1}MB", sign, abs as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{}{:.1}GB", sign, abs as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+pub fn print_trend(dir: &str, deltas: &[TrendDelta]) {
+    println!("\n{} — growth trend", dir.cyan().bold());
+    if deltas.is_empty() {
+        println!("  Not enough scan history yet. Run dirtrack against this directory at least twice.");
+        return;
+    }
+    println!();
+    println!("  {:<22}  {:>12}  {:>12}",
+        "Scanned at".dimmed(),
+        "Files".dimmed(),
+        "Size".dimmed()
+    );
+    for delta in deltas {
+        let when = format_relative_time(delta.to.walked_at);
+        let files_str = format!("{:+}", delta.file_count_delta);
+        let size_str = format_size_delta(delta.total_size_delta);
+        println!("  {:<22}  {:>12}  {:>12}", when, files_str, size_str);
+    }
+}
 
 pub fn format_relative_time(t: SystemTime) -> String {
     let elapsed = t.elapsed().unwrap_or_default();
@@ -162,6 +200,40 @@ pub fn print_footer(total_files: usize, scanned: u64, elapsed_ms: u128) {
         scanned,
         elapsed_ms as f64 / 1000.0
     );
+}
+
+pub fn format_cache_age(age: Duration) -> String {
+    let secs = age.as_secs();
+    if secs < 3600 {
+        format!("{}m old", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h old", secs / 3600)
+    } else {
+        format!("{}d old", secs / 86400)
+    }
+}
+
+pub fn print_find_results(pattern: &str, matches: &[FindMatch]) {
+    println!("\n{} matching \"{}\"", "Search results".cyan().bold(), pattern.yellow());
+
+    if matches.is_empty() {
+        println!("  No matches found in any previously scanned directory.");
+        return;
+    }
+
+    let mut by_root: BTreeMap<PathBuf, Vec<&FindMatch>> = BTreeMap::new();
+    for m in matches {
+        by_root.entry(m.root.clone()).or_default().push(m);
+    }
+
+    for (root, group) in by_root {
+        let age = group.iter().map(|m| m.cache_age).min().unwrap_or_default();
+        println!("\n  {}  ({})", root.display().to_string().cyan().bold(), format_cache_age(age).dimmed());
+        for m in group {
+            let rel = m.file.path.strip_prefix(&root).unwrap_or(&m.file.path);
+            println!("    {}", rel.display());
+        }
+    }
 }
 
 pub fn print_echo_command(cmd: &str) {

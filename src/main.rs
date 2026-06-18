@@ -6,9 +6,11 @@ use dirtrack::{
     config::config_dir,
     filters::parse_since,
     scanner::ScanConfig,
-    output::{print_header, print_summary, print_verbose, print_footer, print_echo_command, build_open_choices, print_open_prompt},
+    output::{print_header, print_summary, print_verbose, print_footer, print_echo_command, build_open_choices, print_open_prompt, print_trend, print_find_results},
     history::{History, LastRun, build_preset_args, format_preset_command},
     interactive::run_interactive,
+    trend::{append_entry, build_entry, deltas_for_root},
+    aggregate::find_across_caches,
 };
 use std::time::{Instant, SystemTime};
 use std::process::Command;
@@ -69,11 +71,33 @@ fn main() {
         }
     }
 
+    // --find: fuzzy search across all previously scanned roots, cache-only (no walk)
+    if let Some(ref pattern) = args.find {
+        let index_dir = config_dir().join("dirtrack/index");
+        let matches = find_across_caches(&index_dir, pattern, SystemTime::now());
+        print_find_results(pattern, &matches);
+        return;
+    }
+
+    // --trend: show growth history for this directory instead of scanning
+    if args.trend {
+        let dir = args.dir.clone().unwrap_or_else(|| {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| ".".to_string())
+        });
+        let trend_file = config_dir().join("dirtrack/trend.json");
+        let deltas = deltas_for_root(&trend_file, std::path::Path::new(&dir));
+        print_trend(&dir, &deltas);
+        return;
+    }
+
     // Determine interactive vs direct mode
     let is_interactive = args.dir.is_none()
         && args.since.is_none()
         && args.type_filter.is_none()
-        && args.file.is_none();
+        && args.file.is_none()
+        && args.stale.is_none();
 
     let history_for_defaults = History::load_default();
     let (dir, since_str, type_spec, verbose, open_finder) = if is_interactive {
@@ -113,12 +137,23 @@ fn main() {
         None
     };
 
+    // Parse stale
+    let stale_before: Option<SystemTime> = if let Some(ref s) = args.stale {
+        match parse_since(s) {
+            Ok(t) => Some(t),
+            Err(e) => { eprintln!("Error parsing --stale: {}", e); std::process::exit(1); }
+        }
+    } else {
+        None
+    };
+
     let config = ScanConfig {
         since,
         until,
         type_spec: type_spec.clone(),
         filename: args.file.clone(),
         max_depth: args.depth,
+        stale_before,
     };
 
     // Scan with timing (uses index cache; --refresh forces a full walk)
@@ -133,6 +168,13 @@ fn main() {
         Err(e) => { eprintln!("Scan error: {}", e); std::process::exit(1); }
     };
     let elapsed_ms = start_time.elapsed().as_millis();
+
+    // Append a trend entry from the just-written index cache (no extra filesystem walk).
+    if let Some(cache) = dirtrack::index::read_cache(&cache_file) {
+        let trend_file = config_dir().join("dirtrack/trend.json");
+        let entry = build_entry(std::path::Path::new(&dir), cache.walked_at, &cache.files);
+        let _ = append_entry(&trend_file, entry);
+    }
 
     let total_files: usize = results.iter().map(|r| r.files.len()).sum();
 

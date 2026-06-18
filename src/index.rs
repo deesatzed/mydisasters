@@ -59,7 +59,10 @@ fn is_fresh(cache: &IndexCache) -> bool {
     }
 }
 
-fn read_cache(cache_file: &Path) -> Option<IndexCache> {
+/// Reads the persisted index cache at `cache_file`, if present and parseable.
+/// Used by callers (e.g. trend logging) that need the full file list/sizes
+/// after a scan without re-walking the filesystem.
+pub fn read_cache(cache_file: &Path) -> Option<IndexCache> {
     let raw = std::fs::read_to_string(cache_file).ok()?;
     serde_json::from_str(&raw).ok()
 }

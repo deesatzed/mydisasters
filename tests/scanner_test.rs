@@ -16,6 +16,7 @@ fn test_scan_finds_recent_file() {
         type_spec: Some("secrets".to_string()),
         filename: None,
         max_depth: None,
+        stale_before: None,
     };
 
     let results = scan(tmp.path(), &config);
@@ -34,6 +35,7 @@ fn test_scan_excludes_old_file() {
         type_spec: Some("secrets".to_string()),
         filename: None,
         max_depth: None,
+        stale_before: None,
     };
 
     let results = scan(tmp.path(), &config);
@@ -53,6 +55,7 @@ fn test_scan_max_depth() {
         type_spec: Some("code".to_string()),
         filename: None,
         max_depth: Some(2),
+        stale_before: None,
     };
 
     let results = scan(tmp.path(), &config);
@@ -71,9 +74,46 @@ fn test_scan_specific_filename() {
         type_spec: None,
         filename: Some(".env".to_string()),
         max_depth: None,
+        stale_before: None,
     };
 
     let results = scan(tmp.path(), &config);
     assert_eq!(results.len(), 1);
     assert!(results[0].files[0].name == ".env");
+}
+
+#[test]
+fn test_scan_stale_includes_all_old_dir() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("old.txt"), b"OLD").unwrap();
+
+    let config = ScanConfig {
+        since: None,
+        until: None,
+        type_spec: Some("all".to_string()),
+        filename: None,
+        max_depth: None,
+        stale_before: Some(SystemTime::now() + Duration::from_secs(3600)),
+    };
+
+    let results = scan(tmp.path(), &config);
+    assert!(!results.is_empty(), "directory whose newest file predates the threshold should be included");
+}
+
+#[test]
+fn test_scan_stale_excludes_dir_with_recent_file() {
+    let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("recent.txt"), b"NEW").unwrap();
+
+    let config = ScanConfig {
+        since: None,
+        until: None,
+        type_spec: Some("all".to_string()),
+        filename: None,
+        max_depth: None,
+        stale_before: Some(SystemTime::now() - Duration::from_secs(3600)),
+    };
+
+    let results = scan(tmp.path(), &config);
+    assert!(results.is_empty(), "directory with a file newer than the threshold should be excluded");
 }

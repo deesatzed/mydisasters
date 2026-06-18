@@ -24,6 +24,7 @@ pub struct ScanConfig {
     pub type_spec: Option<String>,
     pub filename: Option<String>,
     pub max_depth: Option<usize>,
+    pub stale_before: Option<SystemTime>,
 }
 
 /// Scans `start` using the index cache at `cache_file` (full walk on cache miss/stale/refresh,
@@ -90,6 +91,14 @@ pub fn scan_with_cache(
         .map(|(dir, mut files)| {
             files.sort_by_key(|f| std::cmp::Reverse(f.mtime));
             DirResult { dir, files }
+        })
+        .filter(|result| {
+            match config.stale_before {
+                Some(threshold) => result.files.iter().map(|f| f.mtime).max()
+                    .map(|newest| newest < threshold)
+                    .unwrap_or(false),
+                None => true,
+            }
         })
         .collect();
 

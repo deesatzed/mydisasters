@@ -5,3 +5,5 @@ pub mod history;
 pub mod output;
 pub mod interactive;
 pub mod index;
+pub mod trend;
+pub mod aggregate;

@@ -21,6 +21,10 @@ pub struct Cli {
     #[arg(long)]
     pub until: Option<String>,
 
+    /// Find directories where every file is older than this (2h, 7d, 30m, or ISO date)
+    #[arg(long)]
+    pub stale: Option<String>,
+
     /// File type preset or comma-separated extensions (secrets, configs, code, all, or .env,.toml)
     #[arg(long = "type")]
     pub type_filter: Option<String>,
@@ -28,6 +32,11 @@ pub struct Cli {
     /// Specific filename to search for (exact match, e.g. .env)
     #[arg(long)]
     pub file: Option<String>,
+
+    /// Fuzzy (substring, case-insensitive) search across ALL previously scanned
+    /// directories, using cached index data. Ignores `dir` and most other filters.
+    #[arg(long, conflicts_with = "dir")]
+    pub find: Option<String>,
 
     /// Maximum directory recursion depth
     #[arg(long)]
@@ -60,4 +69,8 @@ pub struct Cli {
     /// Force a full directory re-scan, ignoring the cached index
     #[arg(long)]
     pub refresh: bool,
+
+    /// Show file count / size growth trend for this directory instead of scanning
+    #[arg(long)]
+    pub trend: bool,
 }
