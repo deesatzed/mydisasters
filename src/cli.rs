@@ -73,4 +73,9 @@ pub struct Cli {
     /// Show file count / size growth trend for this directory instead of scanning
     #[arg(long)]
     pub trend: bool,
+
+    /// Run as an MCP (Model Context Protocol) stdio server, exposing find_changed,
+    /// fuzzy_find, and trend as callable tools, instead of running the normal CLI
+    #[arg(long)]
+    pub mcp: bool,
 }

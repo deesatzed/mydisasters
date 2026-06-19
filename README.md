@@ -91,9 +91,53 @@ OPTIONS:
   --history         Show last 5 interactive searches
   --completions <shell>  Generate shell completions (bash, zsh, fish, powershell, elvish)
   --refresh         Force a full re-scan, ignoring the cached index
+  --mcp             Run as an MCP stdio server instead of the normal CLI (see "MCP mode" below)
   -h, --help        Print help
   -V, --version     Print version
 ```
+
+---
+
+## MCP mode
+
+Run dirtrack as an [MCP](https://modelcontextprotocol.io) server so an AI agent (Claude Code, Claude Desktop, or any MCP client) can call it directly as a tool, instead of shelling out to the CLI and parsing colored terminal output.
+
+```bash
+dirtrack --mcp
+```
+
+This starts a stdio JSON-RPC server — it does not print anything to stdout itself and is meant to be launched by an MCP client, not run interactively.
+
+### Claude Desktop / Claude Code config
+
+Add to your MCP client's config (e.g. `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "dirtrack": {
+      "command": "dirtrack",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+### Tools exposed
+
+| Tool | Wraps | Description |
+|------|-------|--------------|
+| `find_changed` | `--since`/`--stale`/`--type`/`--file`/`--depth` | Scan a directory for files changed or stale within a time window, filtered by type or exact filename. Returns structured JSON (no terminal formatting). |
+| `fuzzy_find` | `--find` | Case-insensitive substring search across every directory previously scanned, using cached index data only — never walks the filesystem. |
+| `trend` | `--trend` | File-count / total-size growth history for a directory, computed from dirtrack's trend log. |
+
+`find_changed` request fields: `dir` (required), `since`, `until`, `stale`, `type`, `file`, `depth`, `refresh` — same semantics as the matching CLI flags.
+
+`fuzzy_find` request fields: `pattern` (required).
+
+`trend` request fields: `dir` (required).
+
+All three return structured JSON content (via MCP's `structuredContent`), not preformatted text — the same scan/cache/trend logic as the CLI, just without colors or terminal layout. History and presets are CLI-only conveniences and are not exposed over MCP.
 
 ---
 

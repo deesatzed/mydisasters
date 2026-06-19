@@ -7,3 +7,4 @@ pub mod interactive;
 pub mod index;
 pub mod trend;
 pub mod aggregate;
+pub mod mcp;

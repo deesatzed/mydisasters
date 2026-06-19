@@ -18,6 +18,15 @@ use std::process::Command;
 fn main() {
     let args = Cli::parse();
 
+    if args.mcp {
+        let rt = tokio::runtime::Runtime::new().expect("failed to start tokio runtime");
+        if let Err(e) = rt.block_on(dirtrack::mcp::run_stdio_server()) {
+            eprintln!("MCP server error: {:?}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
     if let Some(shell) = args.completions {
         clap_complete::generate(shell, &mut Cli::command(), "dirtrack", &mut std::io::stdout());
         return;
